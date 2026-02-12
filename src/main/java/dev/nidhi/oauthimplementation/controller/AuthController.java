@@ -47,6 +47,13 @@ public class AuthController {
     ResponseEntity<UserDTO> signup(@RequestBody SignupRequestDTO signupRequestDTO) {
         // Implement user registration logic here
         // Validate input, create user, save to database, and return appropriate response
+        /*
+          {
+            "username":"Nidhi",
+            "password":"Nidhi123",
+            "email":"nidhi@gmail.com"
+          }
+         */
        try{
            User user = authService.signup(signupRequestDTO.getUsername(),
                    signupRequestDTO.getEmail(),
@@ -63,6 +70,12 @@ public class AuthController {
     ResponseEntity<UserDTO> login(@RequestBody LoginRequestDTO loginRequestDTO){
         // Implement user authentication logic here
         // Validate credentials, authenticate user, and return appropriate response
+        /*
+        {
+            "username":"Kavya",
+            "password":"Kavya123"
+        }
+         */
         try{
             User user = authService.login(loginRequestDTO.getUsername(),
                     loginRequestDTO.getPassword());

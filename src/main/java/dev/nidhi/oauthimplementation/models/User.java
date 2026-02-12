@@ -27,6 +27,7 @@ public class User extends  BaseModel{
         super.setCreatedAt(createdAt);
         super.setUpdatedAt(updatedAt);
         super.setState(state);
+        this.password = password;
         this.username = username;
         this.email = email;
         this.roles = roles;
