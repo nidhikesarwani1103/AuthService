@@ -10,7 +10,9 @@ import dev.nidhi.oauthimplementation.models.User;
 import dev.nidhi.oauthimplementation.repositories.RoleRepository;
 import dev.nidhi.oauthimplementation.repositories.SessionRepository;
 import dev.nidhi.oauthimplementation.repositories.UserRepository;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwt;
+import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.MacAlgorithm;
 import org.antlr.v4.runtime.misc.Pair;
@@ -19,6 +21,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import javax.swing.text.html.Option;
 import java.util.*;
 
 @Service
@@ -26,14 +29,26 @@ public class AuthServiceImplementation implements IAuthService {
 
     @Autowired
     private UserRepository userRepository;
+
     @Autowired
     private RoleRepository roleRepository;
+
     @Autowired
     private SessionRepository sessionRepository;
 
     // defined in configs/AuthConfig.java
     @Autowired
     private BCryptPasswordEncoder bCryptPasswordEncoder;
+
+    /*
+        Generating secret key again will create a new key, we don't want that
+         So we need to make secret key as singleton and use the same key for
+         both generating and validating the token
+         Define a bean for secret key in the configuration class and autowire it here
+
+     */
+    @Autowired
+    private SecretKey secretKey;
 
     @Override
     public User signup(String username, String email, String password) {
@@ -83,6 +98,30 @@ public class AuthServiceImplementation implements IAuthService {
         return new Pair<>(optionalUser.get(), jwtToken);
     }
 
+    @Override
+    public Boolean validateToken(String token) {
+
+        // We need to check if the token is present in the session table
+        Optional<Session> optionalSession = sessionRepository.findByToken(token);
+        if(optionalSession.isEmpty()){
+            return false;
+        }
+        // We need the secret key and algorithm to validate the token
+        MacAlgorithm macAlgorithm = Jwts.SIG.HS256;
+        JwtParser jwtParser = Jwts.parser().verifyWith(secretKey).build();
+        Claims claims = jwtParser.parseSignedClaims(token).getPayload();
+
+        Long expirationTime = (Long) claims.get("exp");
+        if(System.currentTimeMillis() > expirationTime)
+        {
+            Session session = optionalSession.get();
+            session.setState(State.INACTIVE);
+            sessionRepository.save(session);
+            return false;
+        }
+        return true;
+    }
+
 /*
  login api should generate the JWT  token
  Payload is the most important also referred as claims,
@@ -107,7 +146,7 @@ public class AuthServiceImplementation implements IAuthService {
     private String prepareJwtToken(User user){
         Map<String, Object> payload = new HashMap<>();
         payload.put("iat", System.currentTimeMillis());
-        payload.put("exp", System.currentTimeMillis()+10000);
+        payload.put("exp", System.currentTimeMillis()+ 1000*60*60*24); // 24 hours
         payload.put("iss", "Nidhi");
         payload.put("userId", user.getId());
         payload.put("scope", user.getRoles());
@@ -116,9 +155,6 @@ public class AuthServiceImplementation implements IAuthService {
 
         //Algorithm
         MacAlgorithm macAlgorithm = Jwts.SIG.HS256;
-        // With this algorithm, we can generate secret key
-        SecretKey secretKey = macAlgorithm.key().build();
-
         String token = Jwts.builder().
                 claims(payload)
                 .signWith(secretKey)

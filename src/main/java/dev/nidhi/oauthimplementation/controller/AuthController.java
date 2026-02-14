@@ -3,6 +3,7 @@ package dev.nidhi.oauthimplementation.controller;
 import dev.nidhi.oauthimplementation.dtos.LoginRequestDTO;
 import dev.nidhi.oauthimplementation.dtos.SignupRequestDTO;
 import dev.nidhi.oauthimplementation.dtos.UserDTO;
+import dev.nidhi.oauthimplementation.dtos.ValidateTokenDTO;
 import dev.nidhi.oauthimplementation.models.User;
 import dev.nidhi.oauthimplementation.service.IAuthService;
 import org.antlr.v4.runtime.misc.Pair;
@@ -99,5 +100,28 @@ public class AuthController {
         }
     }
 
+    /*
+    API to validate the JWT token and get the user details based on the token,
+    this will be used in the frontend to check if the user is logged in or not,
+    and to get the user details to show in the front-end.
+    -Request Type: POST
+    -Endpoint: /validate-token
+    -Input Parameter: JWT token
+    -Response Type: ResponseEntity<UserDTO>
+        Success: 200, with user details
+        Failure: 401, with error message
+     */
+
+    @PostMapping("/validate-token")
+    public ResponseEntity<String> validateToken(@RequestBody ValidateTokenDTO validateTokenDTO){
+
+       Boolean result = authService.validateToken(validateTokenDTO.getToken());
+       if(result){
+           return new ResponseEntity<>("Token is valid", HttpStatus.OK);
+       }
+       else {
+           return new ResponseEntity<>("Please login again", HttpStatus.FORBIDDEN);
+       }
+    }
 
 }
