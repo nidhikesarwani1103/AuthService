@@ -5,10 +5,13 @@ import dev.nidhi.oauthimplementation.dtos.SignupRequestDTO;
 import dev.nidhi.oauthimplementation.dtos.UserDTO;
 import dev.nidhi.oauthimplementation.models.User;
 import dev.nidhi.oauthimplementation.service.IAuthService;
+import org.antlr.v4.runtime.misc.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -77,10 +80,19 @@ public class AuthController {
         }
          */
         try{
-            User user = authService.login(loginRequestDTO.getUsername(),
+            System.out.println("landed here");
+            Pair<User, String> response = authService.login(loginRequestDTO.getUsername(),
                     loginRequestDTO.getPassword());
 
-            return new ResponseEntity<>(user.convertToUserDTO(),HttpStatus.OK);
+            // We have to set token in the header
+            // Headers are represented as MultiValue Map, the client will save this token as cookies
+
+            MultiValueMap <String, String> headers = new LinkedMultiValueMap<>();
+            headers.add(HttpHeaders.COOKIE, response.b);
+            HttpHeaders httpHeaders = new HttpHeaders(headers);
+            return new ResponseEntity<>(response.a.convertToUserDTO(),
+                                        httpHeaders,
+                                        HttpStatus.OK);
         }
         catch (Exception e){
             return new ResponseEntity<>((HttpHeaders) null, HttpStatus.UNAUTHORIZED);

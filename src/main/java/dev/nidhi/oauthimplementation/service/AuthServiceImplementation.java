@@ -4,17 +4,22 @@ import dev.nidhi.oauthimplementation.exceptions.InvalidCredentialsException;
 import dev.nidhi.oauthimplementation.exceptions.UserAlreadyExistsException;
 import dev.nidhi.oauthimplementation.exceptions.UserNotRegisteredException;
 import dev.nidhi.oauthimplementation.models.Role;
+import dev.nidhi.oauthimplementation.models.Session;
 import dev.nidhi.oauthimplementation.models.State;
 import dev.nidhi.oauthimplementation.models.User;
 import dev.nidhi.oauthimplementation.repositories.RoleRepository;
+import dev.nidhi.oauthimplementation.repositories.SessionRepository;
 import dev.nidhi.oauthimplementation.repositories.UserRepository;
+import io.jsonwebtoken.Jwt;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.MacAlgorithm;
+import org.antlr.v4.runtime.misc.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
+import javax.crypto.SecretKey;
+import java.util.*;
 
 @Service
 public class AuthServiceImplementation implements IAuthService {
@@ -23,6 +28,8 @@ public class AuthServiceImplementation implements IAuthService {
     private UserRepository userRepository;
     @Autowired
     private RoleRepository roleRepository;
+    @Autowired
+    private SessionRepository sessionRepository;
 
     // defined in configs/AuthConfig.java
     @Autowired
@@ -53,8 +60,10 @@ public class AuthServiceImplementation implements IAuthService {
         return userRepository.save(user);
     }
 
+
+
     @Override
-    public User login(String username, String password) {
+    public Pair<User, String> login(String username, String password) {
 
         Optional<User> optionalUser = userRepository.findByUsername(username);
         if(optionalUser.isEmpty()){
@@ -66,6 +75,55 @@ public class AuthServiceImplementation implements IAuthService {
            throw new InvalidCredentialsException("Invalid password for username " + username);
         }
 
-        return optionalUser.get();
+        String jwtToken = prepareJwtToken(optionalUser.get());
+        // To store this token we need to create a new entity "session"
+        Session session = new Session(jwtToken, optionalUser.get(), State.ACTIVE);
+        sessionRepository.save(session);
+
+        return new Pair<>(optionalUser.get(), jwtToken);
+    }
+
+/*
+ login api should generate the JWT  token
+ Payload is the most important also referred as claims,
+   which contains the user information and the token expiration time and other relevant data.
+ Header contains the type of token and the signing algorithm used to sign the token.
+ Signature is used to verify the authenticity of the token and ensure that
+   it has not been tampered with.
+
+ Which data type?
+
+ Map<String, Object> claims = new HashMap<>(); Where key represents the claim name and value
+  represents the claim value.
+
+  Claim value (payload):
+     1. issuedAt: (iat)
+     2. exp: (exp)
+     3. userid (userId)
+     4. issuedBy (iss)
+     5. scope (scope)
+
+*/
+    private String prepareJwtToken(User user){
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("iat", System.currentTimeMillis());
+        payload.put("exp", System.currentTimeMillis()+10000);
+        payload.put("iss", "Nidhi");
+        payload.put("userId", user.getId());
+        payload.put("scope", user.getRoles());
+
+        // Now we need header(algorithm) and signature to generate the JWT token
+
+        //Algorithm
+        MacAlgorithm macAlgorithm = Jwts.SIG.HS256;
+        // With this algorithm, we can generate secret key
+        SecretKey secretKey = macAlgorithm.key().build();
+
+        String token = Jwts.builder().
+                claims(payload)
+                .signWith(secretKey)
+                .compact();
+
+        return token;
     }
 }
