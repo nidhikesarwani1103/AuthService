@@ -9,6 +9,7 @@ import dev.nidhi.oauthimplementation.models.User;
 import dev.nidhi.oauthimplementation.repositories.RoleRepository;
 import dev.nidhi.oauthimplementation.repositories.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
@@ -22,6 +23,10 @@ public class AuthServiceImplementation implements IAuthService {
     private UserRepository userRepository;
     @Autowired
     private RoleRepository roleRepository;
+
+    // defined in configs/AuthConfig.java
+    @Autowired
+    private BCryptPasswordEncoder bCryptPasswordEncoder;
 
     @Override
     public User signup(String username, String email, String password) {
@@ -42,8 +47,8 @@ public class AuthServiceImplementation implements IAuthService {
             role = optionalRole.get();
         }
 
-        User user = new User(username, email, password, List.of(role),
-                             new Date(), new Date(), State.ACTIVE);
+        User user = new User(username, email, bCryptPasswordEncoder.encode(password),
+                List.of(role), new Date(), new Date(), State.ACTIVE);
 
         return userRepository.save(user);
     }
@@ -57,8 +62,8 @@ public class AuthServiceImplementation implements IAuthService {
                     " is not registered");
         }
 
-        if(!optionalUser.get().getPassword().equals(password)){
-             throw new InvalidCredentialsException("Invalid password for username " + username);
+        if(!bCryptPasswordEncoder.matches(password, optionalUser.get().getPassword())){
+           throw new InvalidCredentialsException("Invalid password for username " + username);
         }
 
         return optionalUser.get();
