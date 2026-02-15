@@ -5,6 +5,7 @@ import dev.nidhi.oauthimplementation.dtos.SignupRequestDTO;
 import dev.nidhi.oauthimplementation.dtos.UserDTO;
 import dev.nidhi.oauthimplementation.dtos.ValidateTokenDTO;
 import dev.nidhi.oauthimplementation.models.User;
+import dev.nidhi.oauthimplementation.pojos.UserToken;
 import dev.nidhi.oauthimplementation.service.IAuthService;
 import org.antlr.v4.runtime.misc.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 @RestController
 @RequestMapping("/auth")
@@ -46,6 +50,9 @@ public class AuthController {
        */
     @Autowired
     private IAuthService authService;
+
+    private static final Logger log =
+            LoggerFactory.getLogger(AuthController.class);
 
     @PostMapping("/signup")
     ResponseEntity<UserDTO> signup(@RequestBody SignupRequestDTO signupRequestDTO) {
@@ -81,22 +88,24 @@ public class AuthController {
         }
          */
         try{
-            System.out.println("landed here");
-            Pair<User, String> response = authService.login(loginRequestDTO.getUsername(),
+            UserToken userToken = authService.login(loginRequestDTO.getEmail(),
                     loginRequestDTO.getPassword());
 
             // We have to set token in the header
             // Headers are represented as MultiValue Map, the client will save this token as cookies
 
+            log.debug("Got UserToken response: {}", userToken);
+
             MultiValueMap <String, String> headers = new LinkedMultiValueMap<>();
-            headers.add(HttpHeaders.COOKIE, response.b);
+            headers.add(HttpHeaders.COOKIE, userToken.getToken());
             HttpHeaders httpHeaders = new HttpHeaders(headers);
-            return new ResponseEntity<>(response.a.convertToUserDTO(),
+            return new ResponseEntity<>(userToken.getUser().convertToUserDTO(),
                                         httpHeaders,
                                         HttpStatus.OK);
         }
         catch (Exception e){
-            return new ResponseEntity<>((HttpHeaders) null, HttpStatus.UNAUTHORIZED);
+            System.out.println("Login Error: " + e.getMessage());
+            return new ResponseEntity<>((HttpHeaders) null, HttpStatus.FORBIDDEN);
         }
     }
 
@@ -112,15 +121,15 @@ public class AuthController {
         Failure: 401, with error message
      */
 
-    @PostMapping("/validate-token")
+    @PostMapping("/validateToken")
     public ResponseEntity<String> validateToken(@RequestBody ValidateTokenDTO validateTokenDTO){
 
        Boolean result = authService.validateToken(validateTokenDTO.getToken());
-       if(result){
-           return new ResponseEntity<>("Token is valid", HttpStatus.OK);
+       if(result==false){
+           return new ResponseEntity<>("Please login again", HttpStatus.FORBIDDEN);
        }
        else {
-           return new ResponseEntity<>("Please login again", HttpStatus.FORBIDDEN);
+           return new ResponseEntity<>("Token is valid", HttpStatus.OK);
        }
     }
 

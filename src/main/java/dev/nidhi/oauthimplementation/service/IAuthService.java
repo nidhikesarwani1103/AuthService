@@ -1,11 +1,11 @@
 package dev.nidhi.oauthimplementation.service;
 
 import dev.nidhi.oauthimplementation.models.User;
-import org.antlr.v4.runtime.misc.Pair;
+import dev.nidhi.oauthimplementation.pojos.UserToken;
 
 public interface IAuthService {
 
     User signup(String username, String email, String password);
-    Pair<User, String> login(String username, String password);
+    UserToken login(String email, String password);
     Boolean validateToken(String token);
 }

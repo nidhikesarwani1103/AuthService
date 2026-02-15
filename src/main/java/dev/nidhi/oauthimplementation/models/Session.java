@@ -1,5 +1,6 @@
 package dev.nidhi.oauthimplementation.models;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.ManyToOne;
 import lombok.Getter;
@@ -12,6 +13,7 @@ import lombok.Setter;
 @NoArgsConstructor
 public class Session extends BaseModel{
 
+    @Column(columnDefinition = "TEXT")
     private String token;
 
     @ManyToOne

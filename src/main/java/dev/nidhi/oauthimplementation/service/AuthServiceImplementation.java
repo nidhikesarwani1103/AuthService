@@ -1,5 +1,6 @@
 package dev.nidhi.oauthimplementation.service;
 
+import dev.nidhi.oauthimplementation.exceptions.IncorrectPasswordException;
 import dev.nidhi.oauthimplementation.exceptions.InvalidCredentialsException;
 import dev.nidhi.oauthimplementation.exceptions.UserAlreadyExistsException;
 import dev.nidhi.oauthimplementation.exceptions.UserNotRegisteredException;
@@ -7,6 +8,7 @@ import dev.nidhi.oauthimplementation.models.Role;
 import dev.nidhi.oauthimplementation.models.Session;
 import dev.nidhi.oauthimplementation.models.State;
 import dev.nidhi.oauthimplementation.models.User;
+import dev.nidhi.oauthimplementation.pojos.UserToken;
 import dev.nidhi.oauthimplementation.repositories.RoleRepository;
 import dev.nidhi.oauthimplementation.repositories.SessionRepository;
 import dev.nidhi.oauthimplementation.repositories.UserRepository;
@@ -19,9 +21,10 @@ import org.antlr.v4.runtime.misc.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.crypto.SecretKey;
-import javax.swing.text.html.Option;
 import java.util.*;
 
 @Service
@@ -39,6 +42,8 @@ public class AuthServiceImplementation implements IAuthService {
     // defined in configs/AuthConfig.java
     @Autowired
     private BCryptPasswordEncoder bCryptPasswordEncoder;
+    private static final Logger LOG =
+            LoggerFactory.getLogger(AuthServiceImplementation.class);
 
     /*
         Generating secret key again will create a new key, we don't want that
@@ -56,6 +61,7 @@ public class AuthServiceImplementation implements IAuthService {
         // with the same email or username already exists in the database before creating a new user.
         Optional<User> OptionalUser = userRepository.findByEmail(email);
         if(OptionalUser.isPresent()){
+            LOG.debug("User Already Registered with email: {}", email);
             throw new UserAlreadyExistsException("User with email " + email + " already exists.");
         }
         // set the default role for the user as "USER"
@@ -63,6 +69,7 @@ public class AuthServiceImplementation implements IAuthService {
         Optional<Role> optionalRole = roleRepository.findByName("DEFAULT");
 
         if(optionalRole.isEmpty()){
+            LOG.debug("Setting up default role for the user");
             role = new Role("DEFAULT", new Date(), new Date(), State.ACTIVE);
             roleRepository.save(role);
         } else {
@@ -71,31 +78,42 @@ public class AuthServiceImplementation implements IAuthService {
 
         User user = new User(username, email, bCryptPasswordEncoder.encode(password),
                 List.of(role), new Date(), new Date(), State.ACTIVE);
-
-        return userRepository.save(user);
+        userRepository.save(user);
+        LOG.debug("User Details fetched from db: "+
+                userRepository.findByEmail(email));
+        return user;
     }
 
 
 
     @Override
-    public Pair<User, String> login(String username, String password) {
+    public UserToken login(String email, String password) {
+        Optional<User> optionalUser = userRepository.findByEmail(email);
 
-        Optional<User> optionalUser = userRepository.findByUsername(username);
         if(optionalUser.isEmpty()){
-            throw new UserNotRegisteredException("User with username " + username +
-                    " is not registered");
+            LOG.debug("User not registered with email: {}", email);
+            throw new UserNotRegisteredException("Please register first");
         }
 
-        if(!bCryptPasswordEncoder.matches(password, optionalUser.get().getPassword())){
-           throw new InvalidCredentialsException("Invalid password for username " + username);
+        User user = optionalUser.get();
+
+        if(bCryptPasswordEncoder.matches(password, user.getPassword())){
+
+            LOG.debug("Password matched, generating token for the user: {}", email);
+
+            String token = prepareJwtToken(optionalUser.get());
+
+            LOG.debug("Generated token for the user: {} is {}", email, token);
+
+            createNewSession(user, token);
+
+            LOG.debug("Fetched session details from db: {}", sessionRepository.findByToken(token));
+
+            return new UserToken(user, token);
         }
-
-        String jwtToken = prepareJwtToken(optionalUser.get());
-        // To store this token we need to create a new entity "session"
-        Session session = new Session(jwtToken, optionalUser.get(), State.ACTIVE);
-        sessionRepository.save(session);
-
-        return new Pair<>(optionalUser.get(), jwtToken);
+        else{
+            throw new IncorrectPasswordException("Incorrect password entered");
+        }
     }
 
     @Override
@@ -104,22 +122,40 @@ public class AuthServiceImplementation implements IAuthService {
         // We need to check if the token is present in the session table
         Optional<Session> optionalSession = sessionRepository.findByToken(token);
         if(optionalSession.isEmpty()){
+            LOG.debug("Token not found in session table");
             return false;
         }
         // We need the secret key and algorithm to validate the token
-        MacAlgorithm macAlgorithm = Jwts.SIG.HS256;
         JwtParser jwtParser = Jwts.parser().verifyWith(secretKey).build();
         Claims claims = jwtParser.parseSignedClaims(token).getPayload();
 
-        Long expirationTime = (Long) claims.get("exp");
-        if(System.currentTimeMillis() > expirationTime)
+        LOG.debug("Claim: {}", claims);
+
+        Long expiryTime = (Long) claims.get("exp");
+        Long nowInMills = System.currentTimeMillis();
+
+        if(nowInMills > expiryTime)
         {
+            LOG.debug("Token is expired");
             Session session = optionalSession.get();
             session.setState(State.INACTIVE);
             sessionRepository.save(session);
+            LOG.debug("Session is saved as inactive");
+            LOG.debug("Session fetched from db: {}",
+                    sessionRepository.findByToken(token));
             return false;
         }
+        LOG.debug("Token is valid");
         return true;
+    }
+
+    public void createNewSession(User user, String token){
+        Session session = new Session();
+        session.setToken(token);
+        session.setUser(user);
+        session.setState(State.ACTIVE);
+        LOG.debug("Session details: {}", session);
+        sessionRepository.save(session);
     }
 
 /*
@@ -146,7 +182,7 @@ public class AuthServiceImplementation implements IAuthService {
     private String prepareJwtToken(User user){
         Map<String, Object> payload = new HashMap<>();
         payload.put("iat", System.currentTimeMillis());
-        payload.put("exp", System.currentTimeMillis()+ 1000*60*60*24); // 24 hours
+        payload.put("exp", System.currentTimeMillis()+ 10000000); // 24 hours
         payload.put("iss", "Nidhi");
         payload.put("userId", user.getId());
         payload.put("scope", user.getRoles());
