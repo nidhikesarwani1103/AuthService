@@ -119,6 +119,8 @@ public class AuthServiceImplementation implements IAuthService {
     @Override
     public Boolean validateToken(String token) {
 
+        // Secret key will change evertime the application restarts,
+        // so in real world application we should use a store the key in some storage
         // We need to check if the token is present in the session table
         Optional<Session> optionalSession = sessionRepository.findByToken(token);
         if(optionalSession.isEmpty()){
